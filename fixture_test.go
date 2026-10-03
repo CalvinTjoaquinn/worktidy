@@ -84,12 +84,29 @@ func TestFixtureReproducesTheBug(t *testing.T) {
 	t.Logf("go mod tidy failed as expected:\n%s", out)
 }
 
-// runGo runs the go command in dir with extra environment entries appended.
+// runGo runs the go command in dir. hermeticEnv is always applied; extra
+// entries are appended after it and therefore win.
 func runGo(t *testing.T, dir string, env []string, args ...string) (string, error) {
 	t.Helper()
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(append(os.Environ(), hermeticEnv()...), env...)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+// hermeticEnv keeps the tests off the network. GOPROXY=off makes module lookup
+// fail locally and instantly, which is all these tests need: the point is that
+// `go mod tidy` goes looking for a sibling at all instead of reading go.work.
+// It also makes the failure message stable — with the network reachable the
+// text varies with VCS cache state, which is not something to assert on.
+//
+// The consequence to remember: a fixture can never gain a real external
+// dependency without lifting this.
+//
+// GOFLAGS=-mod=mod is deliberately NOT here. The go command rejects it in
+// workspace mode ("-mod may only be set to readonly or vendor when in
+// workspace mode"), which breaks every test that builds inside the fixture
+// workspace. Nothing needs it: `go mod tidy` rewrites go.mod whatever -mod
+// says, and no test here asks `go build` to edit go.mod.
+func hermeticEnv() []string { return []string{"GOPROXY=off"} }
