@@ -145,6 +145,16 @@ such a `go.mod` is not resolvable outside the workspace. For a **published**
 sibling — a monorepo whose modules are released but developed together — tidy
 resolves a real version and this does not apply.
 
+**You run `worktidy` instead of `go mod tidy`, every time** — not once to
+repair things. For an unpublished sibling, running plain `go mod tidy` afterwards
+still fails, now on the placeholder version rather than on a missing require:
+
+```
+go: example.com/app imports
+	github.com/.../lib: github.com/.../lib@v0.0.0-00010101000000-000000000000: invalid version: ...
+	remote: Repository not found.
+```
+
 **A module that mixes an unpublished sibling with a real external dependency
 cannot be built even after tidying.** Measured: with the unpublished sibling
 alone, `go build` succeeds after `worktidy`; add any real external dependency and
