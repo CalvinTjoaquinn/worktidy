@@ -1,0 +1,60 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.22', '1.26', '1.27']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - run: go test ./... -count=1
+
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      # golang.org/x/mod is the only dependency this tool is allowed. Anything
+      # else reaching the graph is a regression: parsing go.work and go.mod is
+      # the one thing we refuse to reimplement, and everything else is stdlib.
+      # This asks the build graph, not the source text: grepping for an import
+      # name reports a doc comment that merely mentions a package.
+      - run: |
+          go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' . \
+            | grep -v '^github.com/CalvinTjoaquinn/worktidy$' \
+            | grep -v '^golang.org/x/mod' > extra.txt || true
+          if [ -s extra.txt ]; then
+            echo "FAIL: unexpected dependency"; cat extra.txt; exit 1
+          fi
+          echo "OK: stdlib + golang.org/x/mod only"
+      # The go directive is pinned. A bare `go get -u` on golang.org/x/mod
+      # silently raises it and narrows the audience with no code change: Go
+      # treats "1.22" as strictly less than "1.22.0" (gover.go:35), and x/mod
+      # declares go 1.22.0 from v0.21.0 onward, so v0.20.0 is the ceiling.
+      - run: |
+          want='go 1.22'
+          got=$(grep -m1 '^go ' go.mod)
+          if [ "$got" != "$want" ]; then
+            echo "FAIL: go directive drifted: want '$want', got '$got'"; exit 1
+          fi
+          echo "OK: $got"
+
+  vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - run: go vet ./...
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
